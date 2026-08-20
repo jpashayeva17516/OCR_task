@@ -1,0 +1,12 @@
+# --- API-слой ---
+fastapi
+uvicorn[standard]
+python-multipart
+requests
+
+# --- зависимости main.py (OCR) ---
+pytesseract
+opencv-python
+numpy
+pymupdf
+rapidfuzz
