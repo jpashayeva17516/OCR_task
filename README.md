@@ -1,102 +1,106 @@
-# OCR_task — извлечение данных СМГС-накладной в JSON
+# OCR_task — SMGS qaiməsindən JSON formatında məlumat çıxarılması
 
-Скрипт распознаёт железнодорожную накладную СМГС (PDF-скан) и превращает её
-в структурированный JSON с полями, нужными для декларирования в Gömrük
-(азербайджанской таможне). Доступен как CLI-скрипт (`main.py`) и как
-HTTP-сервис (`api.py`, FastAPI) с опциональным переводом текстовых полей на
-азербайджанский (`translator.py`).
+Skript SMGS dəmir yolu qaiməsinin (PDF skan) məlumatlarını Gömrük üçün lazım
+olan sahələrlə strukturlaşdırılmış JSON-a çevirir. Layihə həm CLI skript
+(`main.py`), həm də HTTP xidməti (`api.py`, FastAPI) kimi mövcuddur, mətn
+sahələrinin Azərbaycan dilinə tərcüməsi isə `translator.py` vasitəsilə
+opsional olaraq edilir.
 
-Ключевая идея: поля ищутся не по фиксированным координатам бланка, а по
-**якорям** — подписям граф («Вагон», «К-во мест», «ГНГ» и т.д.), которые
-одинаковы во всех вариантах формы СМГС («Дорожная ведомость» / «Оригинал
-накладной» и др.). Поэтому вёрстка конкретного бланка не имеет значения.
-Найденные значения дополнительно проверяются контрольными разрядами
-(вагон, код ЕСР, контейнер ISO 6346), а не берутся на веру от OCR.
+Əsas ideya: sahələr blankın sabit koordinatları üzrə deyil, **lövbərlər**
+(qrafaların başlıqları — «Вагон», «К-во мест», «ГНГ» və s.) üzrə axtarılır.
+Bu başlıqlar SMGS formasının bütün variantlarında («Дорожная ведомость» /
+«Оригинал накладной» və s.) eynidir, ona görə də konkret blankın tərtibatı
+əhəmiyyət kəsb etmir. Tapılan qiymətlər əlavə olaraq nəzarət rəqəmləri
+(vaqon, ЕСР stansiya kodu, ISO 6346 konteyner) ilə yoxlanılır — OCR
+nəticəsinə kor-koranə etibar edilmir.
 
-## Возможности
+## İmkanlar
 
-- Полностраничный OCR (Tesseract, `rus+eng`) с координатами слов, обработка
-  постранично полосами в несколько потоков.
-- Деskew и нормализация масштаба скана перед распознаванием.
-- Проверка контрольных разрядов: номер вагона, код станции ЕСР, номер
-  контейнера (ISO 6346) — с автоматическим «ремонтом» одной ошибочно
-  распознанной цифры, если это восстанавливает верную контрольную сумму.
-- Извлекаемые поля (см. `SCHEMA` в `main.py`):
+- Tam səhifəli OCR (Tesseract, `rus+eng`), sözlərin koordinatları ilə birgə,
+  səhifə zolaqlara bölünərək çoxaxınlı emal.
+- OCR-dən əvvəl skanın əyriliyinin düzəldilməsi (deskew) və miqyasın
+  normallaşdırılması.
+- Nəzarət rəqəmlərinin yoxlanması: vaqon nömrəsi, ЕСР stansiya kodu, konteyner
+  nömrəsi (ISO 6346) — səhvən tanınmış bir rəqəm düzgün nəzarət cəmini
+  bərpa edirsə, avtomatik "təmir" edilir.
+- Çıxarılan sahələr (bax `main.py`-də `SCHEMA`):
   `invoiceNumber, exporterName, importerName, qnqCode, goodsDescription,
   productWeight, numberOfPlace, containerNumber, customsClearance,
   vehicleNumber, routeOutCode, routeInCode, destinationDys,
   destinationDysCode`.
-- Для каждого поля отдаётся уверенность (`_meta[field].conf`) и источник
-  (`_meta[field].src`), а также список полей, требующих ручной проверки
-  (`_review`) — если поле не найдено или уверенность ниже 0.85.
-- Пакетная обработка нескольких файлов, экспорт в CSV.
-- HTTP API (FastAPI): один файл или батч, опциональный перевод
-  текстовых полей через Azure AI Translator.
+- Hər sahə üçün etibarlılıq dərəcəsi (`_meta[field].conf`) və mənbə
+  (`_meta[field].src`) verilir, həmçinin əl ilə yoxlama tələb edən sahələrin
+  siyahısı (`_review`) — sahə tapılmadıqda və ya etibarlılıq 0.85-dən aşağı
+  olduqda.
+- Bir neçə faylın toplu (batch) emalı, CSV-yə ixrac.
+- HTTP API (FastAPI): tək fayl və ya batch, mətn sahələrinin Azure AI
+  Translator vasitəsilə opsional tərcüməsi.
 
-## Структура репозитория
+## Repozitoriyanın strukturu
 
 ```
-main.py                  CLI: OCR-скрипт, извлечение полей, экспорт в CSV
-api.py                   FastAPI-обёртка над main.py (эндпоинты /extract, /extract/batch)
-translator.py            Перевод текстовых полей результата через Azure AI Translator
-requirements-api.txt     Зависимости API-слоя + зависимости main.py
-refs/                    Справочники заказчика (см. ниже) — в .gitignore, не хранятся в репо
+main.py                  CLI: OCR skripti, sahələrin çıxarılması, CSV-yə ixrac
+api.py                   main.py üzərində FastAPI qatı (/extract, /extract/batch endpointləri)
+translator.py            Azure AI Translator vasitəsilə mətn sahələrinin tərcüməsi
+requirements-api.txt     API qatının asılılıqları + main.py-nin asılılıqları
+refs/                    Sifarişçinin sorğu kitabçaları (aşağıya bax) — .gitignore-dadır, repoda saxlanmır
 ```
 
-## Установка
+## Quraşdırma
 
-Требуется Python 3.10+ и системный Tesseract OCR с русским языковым пакетом.
+Python 3.10+ və rus dili paketi olan sistem Tesseract OCR tələb olunur.
 
 ```bash
-# системный Tesseract
+# sistem Tesseract
 # Linux (Debian/Ubuntu):
 sudo apt install tesseract-ocr tesseract-ocr-rus
-# Windows: Tesseract UB Mannheim (при установке отметить Russian)
+# Windows: Tesseract UB Mannheim (quraşdırarkən Russian seçilməlidir)
 
-# Python-зависимости
+# Python asılılıqları
 pip install -r requirements-api.txt
 ```
 
-Для запуска только CLI-скрипта без API-слоя достаточно:
+Yalnız API qatı olmadan CLI skriptini işlətmək üçün kifayətdir:
 
 ```bash
 pip install pytesseract opencv-python numpy pymupdf rapidfuzz
 ```
 
-## Справочники (`refs/`)
+## Sorğu kitabçaları (`refs/`)
 
-Все бизнес-специфичные данные (коды станций ЕСР, реестр контрагентов, коды
-ГНГ конкретной номенклатуры) намеренно вынесены из кода в файлы
-`./refs/*.json`, которые не попадают в репозиторий (`.gitignore`). Без них
-скрипт продолжает работать, но зависящие поля останутся пустыми — это
-ожидаемое поведение, видимое через `_review`, а не тихий баг.
+Bütün biznesə xas məlumatlar (ЕСР stansiya kodları, kontragentlər reyestri,
+konkret nomenklaturaya aid ГНГ kodları) qəsdən koddan çıxarılıb `./refs/*.json`
+fayllarına köçürülüb və repozitoriyaya daxil edilmir (`.gitignore`). Bu
+fayllar olmadan skript işləməyə davam edir, lakin onlardan asılı sahələr boş
+qalır — bu gözlənilən davranışdır, `_review` vasitəsilə görünür, gizli xəta
+deyil.
 
-| Файл                 | Назначение                                                       | Влияет на поля |
-|----------------------|-------------------------------------------------------------------|----------------|
-| `refs/esr.json`      | код ЕСР → `[название станции, ISO alpha-2 страны]` (~12k кодов, Тарифное руководство №4) | `routeOutCode`, `routeInCode`, `destinationDys(Code)` |
-| `refs/parties.json`  | нормализованное имя контрагента → каноничное имя/юр. адрес       | `exporterName`, `importerName` |
-| `refs/gng_az.json`   | код ГНГ → перевод наименования груза на азербайджанский          | `goodsDescription` (при переводе) |
+| Fayl                 | Təyinatı                                                          | Təsir etdiyi sahələr |
+|----------------------|---------------------------------------------------------------------|----------------|
+| `refs/esr.json`      | ЕСР kodu → `[stansiyanın adı, ölkənin ISO alpha-2 kodu]` (~12 min kod, Tarif Rəhbərliyi №4) | `routeOutCode`, `routeInCode`, `destinationDys(Code)` |
+| `refs/parties.json`  | kontragentin normallaşdırılmış adı → kanonik ad/hüquqi ünvan       | `exporterName`, `importerName` |
+| `refs/gng_az.json`   | ГНГ kodu → yükün adının Azərbaycan dilinə tərcüməsi                | `goodsDescription` (tərcümə zamanı) |
 
-Путь к каталогу справочников можно переопределить переменной окружения
-`SMGS_REFS_DIR` (по умолчанию — `./refs` рядом с `main.py`).
+Sorğu kitabçaları qovluğunun yolu `SMGS_REFS_DIR` mühit dəyişəni ilə
+dəyişdirilə bilər (defolt olaraq `main.py` ilə yanaşı `./refs`).
 
-Домашняя страна для определения `destinationDys` задаётся переменной
-`SMGS_HOME_COUNTRY` (по умолчанию `AZ`).
+`destinationDys`-in müəyyən edilməsi üçün "ev ölkəsi" `SMGS_HOME_COUNTRY`
+dəyişəni ilə verilir (defolt `AZ`).
 
-## Использование: CLI
+## İstifadə: CLI
 
 ```bash
-python main.py накладная.pdf
+python main.py qaimə.pdf
 python main.py *.pdf --csv out.csv
-python main.py накладная.pdf --debug   # печать confidence/источника по каждому полю в stderr
+python main.py qaimə.pdf --debug   # hər sahə üzrə confidence/mənbənin stderr-ə çap edilməsi
 ```
 
-Для каждого файла в stdout выводится JSON с распознанными полями, в stderr —
-время обработки и список полей на ручную проверку. С флагом `--csv` все
-результаты дополнительно сохраняются в один CSV-файл (включая столбец
-`_review`).
+Hər fayl üçün stdout-a tanınmış sahələrlə JSON, stderr-ə isə emal vaxtı və
+əl ilə yoxlanılmalı sahələrin siyahısı çıxarılır. `--csv` bayrağı ilə bütün
+nəticələr əlavə olaraq bir CSV faylına yazılır (o cümlədən `_review` sütunu
+ilə).
 
-## Использование: HTTP API
+## İstifadə: HTTP API
 
 ```bash
 uvicorn api:app --host 0.0.0.0 --port 8000
@@ -106,27 +110,27 @@ Swagger UI: `http://localhost:8000/docs`
 
 ### `POST /extract`
 
-Один PDF-файл → один JSON-объект по схеме Gömrük.
+Bir PDF fayl → Gömrük sxeminə uyğun bir JSON obyekti.
 
 ```bash
 curl -X POST "http://localhost:8000/extract" \
-  -F "file=@накладная.pdf"
+  -F "file=@qaimə.pdf"
 ```
 
-Параметры запроса:
+Sorğu parametrləri:
 
-- `include_meta` (bool, по умолчанию `false`) — добавить в ответ `_meta`
-  (уверенность/источник по каждому полю), `_review` и `_seconds`.
-- `translate` (строка, напр. `az`) — перевести текстовые поля
-  (`exporterName`, `importerName`, `goodsDescription`, `destinationDys`)
-  через Azure AI Translator. Числовые и кодовые поля переводу не подлежат
-  и возвращаются как есть.
+- `include_meta` (bool, defolt `false`) — cavaba `_meta` (hər sahə üzrə
+  etibarlılıq/mənbə), `_review` və `_seconds` əlavə edir.
+- `translate` (sətir, məs. `az`) — mətn sahələrini (`exporterName`,
+  `importerName`, `goodsDescription`, `destinationDys`) Azure AI Translator
+  vasitəsilə tərcümə edir. Rəqəm və kod sahələri tərcümə olunmur, olduğu
+  kimi qaytarılır.
 
 ### `POST /extract/batch`
 
-Несколько файлов за один запрос → список объектов (порядок соответствует
-порядку файлов). Не-PDF файлы и файлы с ошибкой обработки помечаются полем
-`error`, не прерывая обработку остальных.
+Bir sorğuda bir neçə fayl → obyektlərin siyahısı (sıra fayl sırasına
+uyğundur). PDF olmayan fayllar və emal xətası olan fayllar `error` sahəsi
+ilə qeyd olunur, digərlərinin emalını dayandırmır.
 
 ```bash
 curl -X POST "http://localhost:8000/extract/batch" \
@@ -135,41 +139,41 @@ curl -X POST "http://localhost:8000/extract/batch" \
 
 ### `GET /health`
 
-Проверка живости сервиса.
+Xidmətin işlək olduğunun yoxlanması.
 
-## Перевод текстовых полей (`translator.py`)
+## Mətn sahələrinin tərcüməsi (`translator.py`)
 
-Перевод выполняется через **Azure AI Translator** (тариф F0): бесплатно
-2 000 000 символов/мес, данные не сохраняются и не используются для
-обучения моделей — это существенно для накладных с именами компаний и
-адресами. DeepL исключён — не поддерживает азербайджанский; Google Cloud
-Translation требует привязку карты и на бесплатном тарифе может
-использовать текст для улучшения моделей.
+Tərcümə **Azure AI Translator** (F0 tarifi) vasitəsilə edilir: ayda
+2 000 000 simvol pulsuz, məlumatlar saxlanmır və modellərin öyrədilməsi
+üçün istifadə edilmir — bu, şirkət adları və ünvanları olan qaimələr üçün
+əhəmiyyətlidir. DeepL istisna edilib — Azərbaycan dilini dəstəkləmir; Google
+Cloud Translation isə kart bağlanmasını tələb edir və pulsuz tarifdə mətn
+modellərin təkmilləşdirilməsi üçün istifadə oluna bilər.
 
-Переменные окружения:
+Mühit dəyişənləri:
 
 ```bash
-export AZURE_TRANSLATOR_KEY=<ключ ресурса Translator>
-export AZURE_TRANSLATOR_REGION=<регион ресурса, напр. westeurope>
-# опционально:
+export AZURE_TRANSLATOR_KEY=<Translator resursunun açarı>
+export AZURE_TRANSLATOR_REGION=<resursun regionu, məs. westeurope>
+# opsional:
 export AZURE_TRANSLATOR_ENDPOINT=https://api.cognitive.microsofttranslator.com
 ```
 
-Ключ выдаётся на [portal.azure.com](https://portal.azure.com): Create a
+Açar [portal.azure.com](https://portal.azure.com) saytında verilir: Create a
 resource → Translator → Pricing tier: Free F0 → Keys and Endpoint.
 
-Точечная проверка без API:
+API-siz nöqtəvi yoxlama:
 
 ```bash
-python translator.py "текст для перевода" az
+python translator.py "tərcümə ediləcək mətn" az
 ```
 
-Примечание: `exporterName`/`importerName` — юридические названия и адреса,
-машинный перевод которых ненадёжен; такие поля стоит сверять вручную или
-(лучше) подключить `refs/parties.json` с уже готовым каноничным
-написанием — тогда переводить их не потребуется вовсе.
+Qeyd: `exporterName`/`importerName` — hüquqi adlar və ünvanlardır, maşın
+tərcüməsi etibarlı deyil; belə sahələri əl ilə yoxlamaq, ya da (daha yaxşısı)
+artıq hazır kanonik yazılışı olan `refs/parties.json` faylını qoşmaq
+lazımdır — bu halda onları tərcümə etməyə ehtiyac qalmır.
 
-## Формат ответа
+## Cavabın formatı
 
 ```json
 {
@@ -190,19 +194,19 @@ python translator.py "текст для перевода" az
 }
 ```
 
-При `include_meta=true` (API) или `--debug` (CLI) дополнительно доступны:
+`include_meta=true` (API) və ya `--debug` (CLI) ilə əlavə olaraq mövcuddur:
 
-- `_meta.<field>.conf` — уверенность в значении (0–1);
-- `_meta.<field>.src` — как именно поле было найдено (какой якорь/проверка);
-- `_review` — список полей, требующих ручной проверки (не найдены или
-  `conf < 0.85`). Обычно это признак того, что не заполнен нужный
-  справочник в `refs/` (см. выше), а не ошибка OCR.
+- `_meta.<field>.conf` — qiymətə etibarlılıq dərəcəsi (0–1);
+- `_meta.<field>.src` — sahənin necə tapıldığı (hansı lövbər/yoxlama);
+- `_review` — əl ilə yoxlanılmalı sahələrin siyahısı (tapılmayıb və ya
+  `conf < 0.85`). Adətən bu, OCR xətasından çox, `refs/`-də lazımi sorğu
+  kitabçasının doldurulmamasının göstəricisidir (yuxarıya bax).
 
-## Известные ограничения
+## Məlum məhdudiyyətlər
 
-- Полагается на качество скана: сильно смазанные или наклонённые печати
-  поверх текста (штампы, подписи) могут снижать уверенность отдельных полей.
-- `routeOutCode`, `routeInCode`, `destinationDys(Code)` не заполнятся без
-  `refs/esr.json`.
-- `exporterName`/`importerName` без `refs/parties.json` возвращаются как
-  сырой текст OCR (с низкой уверенностью) вместо каноничного названия.
+- Skanın keyfiyyətindən asılıdır: mətn üzərinə düşən bulanıq və ya əyri
+  möhürlər/imzalar ayrı-ayrı sahələrin etibarlılığını azalda bilər.
+- `refs/esr.json` olmadan `routeOutCode`, `routeInCode`,
+  `destinationDys(Code)` doldurulmayacaq.
+- `refs/parties.json` olmadan `exporterName`/`importerName` kanonik ad
+  əvəzinə aşağı etibarlılıqlı xam OCR mətni kimi qaytarılır.
