@@ -147,7 +147,7 @@ def deskew(img: np.ndarray, probe_width: int = 1200) -> np.ndarray:
     if lines is None:
         return img
     ang = [a for a in (math.degrees(math.atan2(y2 - y1, x2 - x1))
-                       for x1, y1, x2, y2 in lines[:, 0]) if abs(a) < 15]
+                       for x1, y1, x2, y2 in lines.reshape(-1, 4)) if abs(a) < 15]
     if not ang:
         return img
     a = float(np.median(ang))
@@ -380,7 +380,7 @@ def extract(img: np.ndarray, W: list[Word], debug=False) -> dict[str, Val]:
     # упаков К-во мест Масса (в кг)»).
     GOODS_X_MAX = 0.56
     HEADER_NOISE = re.compile(
-        r"\b(маcс[аы]?|мест\w*|упаков\w*|род\b|ед\w*\.?ниц\w*|штук\w*)\b", re.I)
+        r"\b(масс[аы]?|мест\w*|упаков\w*|род\b|ед\w*\.?ниц\w*|штук\w*)\b", re.I)
 
     qnq, desc_ru = None, ""
     for ly, ltxt, lw in LINES:
